@@ -56,3 +56,88 @@ def processar_csv_e_inserir_dados(request):
         return JsonResponse({'status': 'Sucesso', 'mensagem': 'Dados inseridos com sucesso no DynamoDB'})
     except Exception as e: 
         return JsonResponse({'status': 'Erro', 'mensagem': str(e)})
+
+# Listar dados do DynamoDB    
+@api_view(['GET'])
+def listar_dados_dynamoDB(request):
+    dynamodb = conectar_dynamodb()
+    table = dynamodb.Table('AMQ')
+
+    try: 
+        response = table.scan()
+        items = response.get('Items', [])
+
+        # Ajusta o formato dos itens para o serializer
+        dados_convertidos = []
+        for item in items:
+            try: 
+                # Substituir vírgulas por pontos e converter para float nos campos necessários
+                latitude = float(item.get('Latitude', '0').replace(',', '.'))
+                longitude = float(item.get('Longitude', '0').replace(',', '.'))
+                frp = float(item.get('FRP', '0').replace(',', '.')) if item.get('FRP') else None
+                precipita = float(item.get('Precipita', '0').replace(',', '.')) if item.get('Precipita') else None
+            except (ValueError, AttributeError):
+                latitude = None
+                longitude = None
+                frp = None
+                precipita = None
+
+            try:
+                # Converte DiasSemChuva para int 
+                dias_sem_chuva = int(float(item.get('DiasSemChuva', '0')))
+            except (ValueError, TypeError):
+                dias_sem_chuva = None
+
+            dados_convertidos.append({
+                'ID': item.get('ID'),
+                'Estado': item.get('Estado'),
+                'Municipio': item.get('Municipio'),
+                'DataHora': item.get('DataHora'),
+                'Bioma': item.get('Bioma'),
+                'Latitude': latitude,
+                'Longitude': longitude,
+                'FRP': frp,
+                'Precipita': precipita,
+                'DiasSemChuva': dias_sem_chuva              
+            })
+        # Agrupamento de Dados
+        agrupamento_por_municipio = defaultdict(int)
+        agrupamento_por_estado = defaultdict(int)
+
+        for dado in dados_convertidos:
+            estado = dado['Estado']
+            municipio = dado['Municipio']
+
+            # Incrementar contadores 
+            agrupamento_por_municipio[(estado, municipio)] += 1
+            agrupamento_por_estado[(estado)] += 1
+        
+        # Formatar resultados de agrupamento 
+        agrupamento_municipios = [
+            {
+                'Estado': estado,
+                'Municipio': municipio,
+                'Incidencias': incidencias
+            }
+            for (estado, municipio), incidencias in agrupamento_por_municipio.items()
+        ]
+
+        agrupamento_estados = [
+            {
+                'Estado': estado,
+                'Incidencias': incidencias
+            }
+            for estado, incidencias in agrupamento_por_estado.items()
+        ]
+
+        # Resposta final com dados processados
+        resposta = {
+            'dados': dados_convertidos,
+            'agrupamento_por_municipio': agrupamento_municipios,
+            'agrupamento_por_estado': agrupamento_estados,
+        }
+
+        return JsonResponse(resposta, safe=False)
+    
+    except Exception as e: 
+        return JsonResponse({'status': 'Erro', 'mensagem': str(e)}, status=500)
