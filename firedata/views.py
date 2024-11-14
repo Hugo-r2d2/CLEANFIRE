@@ -59,7 +59,7 @@ def processar_csv_e_inserir_dados(request):
 
 # Listar dados do DynamoDB    
 @api_view(['GET'])
-def listar_dados_dynamoDB(request):
+def listar_dados_dynamodb(request):
     dynamodb = conectar_dynamodb()
     table = dynamodb.Table('AMQ')
 
